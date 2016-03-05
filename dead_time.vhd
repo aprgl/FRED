@@ -18,6 +18,7 @@ Port (
     rst_n_in        : in    std_logic;
     clk_in          : in    std_logic;
     ena_in          : in    std_logic;
+	 pol_in    		  : in    std_logic	:= '0';	--polarity invert
     high_side_in    : in    std_logic;
     low_side_in     : in    std_logic;
     dead_time_in    : in    std_logic_vector(7 downto 0);
@@ -39,6 +40,8 @@ architecture rtl of dead_time is
         state_l);
 
     signal state, next_state: state_type := state_reset; -- legal?
+	 
+	 
     
     begin
 
@@ -136,8 +139,8 @@ architecture rtl of dead_time is
     --=======================================================================
     --  Stateless Signals
     --=======================================================================
-    low_side_out <= '1' when (low_side_signal = '1' and ena_in = '1') else '0';
-    high_side_out <= '1' when (high_side_signal = '1' and ena_in = '1') else '0';
+    low_side_out <= (pol_in xor '1') when (low_side_signal = '1' and ena_in = '1') else (pol_in xor '0');
+    high_side_out <= (pol_in xor '1') when (high_side_signal = '1' and ena_in = '1') else (pol_in xor '0');
     --------------------------------------------------------------------------
     
     end architecture rtl;

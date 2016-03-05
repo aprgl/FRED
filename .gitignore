@@ -36,15 +36,24 @@
 *~
 *example*
 *sopc_*
+*.bsf
+*.ppf
+*.sip
+*.spd
+*.f
 # *.sdc # I want those timing files
+*_INFO*
+*_dump*
 
 # ignore Quartus lite generated folders
-*/db
-*/incremental_db/
-*/simulation/
-*/timing/
-*/testbench/
-*/*_sim/
+db/
+incremental_db/
+simulation/
+timing/
+testbench/
+*_sim/
+output_files/
+pll_core/
 
 # Compiled source #
 ###################

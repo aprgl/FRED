@@ -68,7 +68,7 @@ architecture rtl of FRED is
 	signal	uh_signal, ul_signal	: std_logic := '0';
 	signal	vh_signal, vl_signal	: std_logic := '0';
 	signal	wh_signal, wl_signal	: std_logic := '0';
-
+	
 	-- GPIO signals
 	signal gpio_out, gpio_in		: std_logic_vector(7 downto 0);	
 
@@ -118,7 +118,13 @@ architecture rtl of FRED is
 	dr_proc: process (tck, tdi_sig, tdo_sig, load_dr, sdr_valid) begin
 		if (rising_edge(tck)) then
 			if (load_dr = '1') then
-				dr <= X"123456" & ir;
+				if(ir = X"00") then
+					dr <= X"12345678";
+				elsif(ir = X"09") then
+					dr <= X"87654321";
+				else
+					dr <= X"00000000";
+				end if;
 			elsif (sdr_valid = '1') then
 				dr <= (tdi_sig & dr(31 downto 1));
 			end if;
@@ -340,6 +346,7 @@ u_dead_time: entity work.dead_time(rtl)
 	 rst_n_in => RST_IN,
     clk_in => clk_40,
     ena_in => '1',
+	 pol_in => '1',						-- Invert polarity for optcoupler circuit
     high_side_in => uh_signal,
     low_side_in => ul_signal,
     dead_time_in => "01100100",
@@ -352,6 +359,7 @@ v_dead_time: entity work.dead_time(rtl)
 	 rst_n_in => RST_IN,
     clk_in => clk_40,
     ena_in => '1',
+	 pol_in => '1',						-- Invert polarity for optcoupler circuit
     high_side_in => vh_signal,
     low_side_in => vl_signal,
     dead_time_in => "01100100",
@@ -364,6 +372,7 @@ w_dead_time: entity work.dead_time(rtl)
 	 rst_n_in => RST_IN,
     clk_in => clk_40,
     ena_in => '1',
+	 pol_in => '1',						-- Invert polarity for optcoupler circuit
     high_side_in => wh_signal,
     low_side_in => wl_signal,
     dead_time_in => "01100100",
