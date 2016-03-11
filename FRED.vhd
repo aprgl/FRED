@@ -34,6 +34,7 @@ Port (
 	MISO_IN		: in std_logic;
 	MOSI_OUT		: out std_logic;
 	
+	brake_out	: out std_logic := '1';
 	leds_out		: out std_logic_vector(7 downto 0) := X"00"
 	
 	--DEBUG_ENA	: in std_logic
@@ -70,7 +71,7 @@ architecture rtl of FRED is
 	signal	wh_signal, wl_signal	: std_logic := '0';
 	
 	-- GPIO signals
-	signal gpio_out, gpio_in		: std_logic_vector(7 downto 0);	
+	signal gpio_out, gpio_in	: std_logic_vector(7 downto 0);	
 
 	-- Resolver Signals
 	signal resolver_signal	: std_logic_vector(23 downto 0);
@@ -84,13 +85,13 @@ architecture rtl of FRED is
 	signal pwm_sginal			: std_logic_vector(9 downto 0);
 	
 	-- Communicated Signals
-	signal speed_ctrl_in : std_logic_vector(7 downto 0) := X"00";
-	signal power_ctrl_in	: std_logic_vector(3 downto 0) := X"0";
-	signal nes_a	: std_logic	:= '1';
-	signal nes_b	: std_logic	:= '1';
-	signal charge	: std_logic	:= '1';
-	signal debug	: std_logic := '0';
-	signal debug_phase	: std_logic_vector(1 downto 0) := "00";
+	signal speed_ctrl_in 	: std_logic_vector(7 downto 0) := X"00";
+	signal power_ctrl_in		: std_logic_vector(3 downto 0) := X"0";
+	signal nes_a				: std_logic	:= '1';
+	signal nes_b				: std_logic	:= '0';
+	signal charge				: std_logic	:= '1';
+	signal debug				: std_logic := '0';
+	signal debug_phase		: std_logic_vector(1 downto 0) := "00";
 	
 	begin
  
@@ -109,7 +110,7 @@ architecture rtl of FRED is
 		TDO 	=> tdo_sig,
 		TCK	=> tck,
 		IR_IN		=> ir,
-		virtual_state_uir => data_ready,
+		virtual_state_udr => data_ready,
 		virtual_state_sdr => sdr_valid,
 		virtual_state_cdr => load_dr
 	 );
@@ -122,6 +123,10 @@ architecture rtl of FRED is
 					dr <= X"12345678";
 				elsif(ir = X"09") then
 					dr <= X"87654321";
+				elsif(ir = X"03") then
+					dr <= X"0000000" & "000" & nes_a;
+				elsif(ir = X"04") then
+					dr <= X"0000000" & "000" & nes_b;
 				else
 					dr <= X"00000000";
 				end if;
@@ -132,29 +137,26 @@ architecture rtl of FRED is
 	end process;
 	
 	pwm_proc: process (tck, data_ready) begin
-		if (rising_edge(tck)) then
-			if(data_ready = '1') then
-				if(ir = X"01") then
-					speed_ctrl_in <= dr(7 downto 0);
-				elsif(ir = X"02") then
-					power_ctrl_in <= dr(3 downto 0);
-				elsif(ir = X"03") then
-					nes_a <= dr(0);
-				elsif(ir = X"04") then
-					nes_b <= dr(0);
-				elsif(ir = X"05") then
-					charge <= dr(0);
-				elsif(ir = X"06") then
-					debug <= dr(0);
-				elsif(ir = X"07") then
-					debug_phase <= dr(1 downto 0);
-				elsif(ir = X"08") then
-					position <= dr(9 downto 0);
-				end if;
+		if (data_ready = '1') then
+			if(ir = X"01") then
+				speed_ctrl_in <= dr(7 downto 0);
+			elsif(ir = X"02") then
+				power_ctrl_in <= dr(3 downto 0);
+			elsif(ir = X"03") then
+				nes_a <= dr(0);
+			elsif(ir = X"04") then
+				nes_b <= dr(0);
+			elsif(ir = X"05") then
+				charge <= dr(0);
+			elsif(ir = X"06") then
+				debug <= dr(0);
+			elsif(ir = X"07") then
+				debug_phase <= dr(1 downto 0);
+			elsif(ir = X"08") then
+				position <= dr(9 downto 0);
 			end if;
 		end if;
 	end process;
-	
 	
 --counter : entity work.counter(rtl)
 --	port map(
@@ -405,6 +407,8 @@ resolver: entity work.spi(rtl)
 --==============================================
 -- Stateless Signals
 --==============================================
-	 leds_out <= not dr(7 downto 0);
-	 
+	 leds_out(0) <= not nes_b;
+	 leds_out(1) <= not nes_a;
+	 leds_out(7) <= not dr(0);
+	 brake_out <= not nes_b;
 end architecture rtl;

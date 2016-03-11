@@ -82,4 +82,5 @@ set_global_assignment -name VHDL_FILE ../../ip/vjtag_port/vhdl/vjtag_port.vhd
 set_global_assignment -name VHDL_FILE FRED.vhd
 set_global_assignment -name QIP_FILE pll_core.qip
 set_global_assignment -name SIP_FILE pll_core.sip
+set_location_assignment PIN_P22 -to brake_out
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
