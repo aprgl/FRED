@@ -1,6 +1,7 @@
 library ieee;
 use ieee.numeric_std.all;
 use ieee.std_logic_1164.all;
+use ieee.std_logic_unsigned.all;
 
 library vjtag;
 library pll_core;
@@ -44,17 +45,20 @@ end entity FRED;
 
 architecture rtl of FRED is
 
-	-- clocks    
-	signal clk_40, clk_2k : std_logic;
+	-- Clocks
+	signal clk_40, clk_600k, slow_clk : std_logic;
+	-- Slow Clock Counter
+	signal count : std_logic_vector(7 downto 0);
 
+	-- Virtual JTAG Signals
 	signal tdi_sig, tdo_sig, tck, sdr_valid, data_ready, load_dr	:	std_logic;
 	signal ir	: std_logic_vector(7 downto 0);
 	signal dr	: std_logic_vector(31 downto 0) := X"87654321";
 	
-	-- sine lookup signals
-	signal position 	: std_logic_vector(9 downto 0);
+	-- Sine lookup signals
+	signal position, freerunning_position, digital_position 	: std_logic_vector(9 downto 0);
 
-	-- pwm signals
+	-- Pwm signals
 	signal	pwm_uh	: std_logic_vector(9 downto 0);
 	signal	pwm_ul	: std_logic_vector(9 downto 0);
 	signal	pwm_vh	: std_logic_vector(9 downto 0);
@@ -81,17 +85,27 @@ architecture rtl of FRED is
 	signal resolver_position : std_logic_vector(15 downto 0);
 	signal sample_signal		: std_logic;
 
-	-- Digital Signals
-	signal pwm_sginal			: std_logic_vector(9 downto 0);
+	-- Control Registers
+	signal speed_ctrl_in 	: std_logic_vector(7 downto 0) := X"0F";		-- 0x01
+	signal power_ctrl_in		: std_logic_vector(3 downto 0) := X"7";		-- 0x02
+	signal nes_a				: std_logic	:= '1';									-- 0x03
+	signal nes_b				: std_logic	:= '0';									-- 0x04
+	signal charge				: std_logic	:= '1';									-- 0x05
+	signal debug				: std_logic := '0';									-- 0x06
+	signal debug_phase		: std_logic_vector(1 downto 0) := "00";		-- 0x07
+	signal freerunning_ena	: std_logic := '1';									-- 0x0A
+	signal phase_leds			: std_logic := '1';									-- 0x0B
+	signal commutation_position : std_logic_vector(15 downto 0)	:= X"4074";-- 0x0C
+	signal closed_loop_ena	: std_logic := '0';									-- 0x0D
+	signal closed_loop_offset: std_logic_vector(9 downto 0) := "00"&X"00"; -- 0x0E
+	signal raw_position		: std_logic_vector(9 downto 0); 					-- 0x0F
 	
-	-- Communicated Signals
-	signal speed_ctrl_in 	: std_logic_vector(7 downto 0) := X"00";
-	signal power_ctrl_in		: std_logic_vector(3 downto 0) := X"0";
-	signal nes_a				: std_logic	:= '1';
-	signal nes_b				: std_logic	:= '0';
-	signal charge				: std_logic	:= '1';
-	signal debug				: std_logic := '0';
-	signal debug_phase		: std_logic_vector(1 downto 0) := "00";
+	-- Closed Loop Control Signals
+	signal closed_loop_position		: std_logic_vector(9 downto 0) := "00"&X"00";
+	
+	-- Sensors
+	signal motor_speed	: std_logic_vector(7 downto 0);
+	signal torque			: std_logic_vector(9 downto 0);
 	
 	begin
  
@@ -100,7 +114,7 @@ architecture rtl of FRED is
 	port map(
 		refclk	=> clk_24,
 		outclk_0	=>	clk_40,
-		outclk_1	=>	clk_2k
+		outclk_1	=>	clk_600k
 	);
 	 
 -- The instantiation will create connect this block to the JTAG chain 
@@ -122,11 +136,15 @@ architecture rtl of FRED is
 				if(ir = X"00") then
 					dr <= X"12345678";
 				elsif(ir = X"09") then
-					dr <= X"87654321";
+					dr <= X"0000" & resolver_signal(23 downto 8);
 				elsif(ir = X"03") then
 					dr <= X"0000000" & "000" & nes_a;
 				elsif(ir = X"04") then
 					dr <= X"0000000" & "000" & nes_b;
+				elsif(ir = X"10") then
+					dr <= X"000000" & motor_speed;
+				elsif(ir = X"11") then
+					dr <= X"00000" & "00"&torque;
 				else
 					dr <= X"00000000";
 				end if;
@@ -153,20 +171,100 @@ architecture rtl of FRED is
 			elsif(ir = X"07") then
 				debug_phase <= dr(1 downto 0);
 			elsif(ir = X"08") then
-				position <= dr(9 downto 0);
+				digital_position <= dr(9 downto 0);
+			elsif(ir = X"0A") then
+				freerunning_ena <= dr(0);
+			elsif(ir = X"0B") then
+				phase_leds <= dr(0);
+			elsif(ir = X"0C") then
+				commutation_position <= dr(15 downto 0);
+			elsif(ir = X"0D") then
+				closed_loop_ena <= dr(0);
+			elsif(ir = X"0E") then
+				closed_loop_offset <= dr(9 downto 0);
+			elsif(ir = X"0F") then
+				raw_position <= dr(9 downto 0);
 			end if;
 		end if;
 	end process;
 	
---counter : entity work.counter(rtl)
---	port map(
---		rst_n_in 	=> RST_IN,
---		clk_in 		=> clk_2k,
---		ena_in 		=> '1',
---		dir_in 		=> NES_A,
---		prescale_in	=> SPEED_CTRL_IN,
---		counter_out => position
---	 );
+	slow_clk_proc: process (clk_600k) begin
+        if( rising_edge(clk_600k) ) then
+            if( count = X"FE") then
+                count <= (others => '0');
+					 slow_clk <= not slow_clk;
+            end if;
+				count <= count + 1;
+        end if;
+    end process slow_clk_proc;
+
+	 -- PWM Scaler
+pwm_scale : entity work.pwm_scale(rtl)
+	port map(
+		rst_n_in		=> RST_IN,
+		clk_in		=> not slow_clk,
+		torque_in	=> torque,
+
+		pwm_uh_in	=> pwm_uh,
+		pwm_ul_in	=> pwm_ul,
+		pwm_vh_in	=> pwm_vh,
+		pwm_vl_in	=> pwm_vl,
+		pwm_wh_in	=> pwm_wh,
+		pwm_wl_in	=> pwm_wl,
+
+		pwm_uh_out	=> pwm_masked_uh,
+		pwm_ul_out	=> pwm_masked_ul,
+		pwm_vh_out	=> pwm_masked_vh,
+		pwm_vl_out	=> pwm_masked_vl,
+		pwm_wh_out	=> pwm_masked_wh,
+		pwm_wl_out	=> pwm_masked_wl
+	);	
+	
+-- Torque Detector
+torque_ctrl : entity work.torque_ctrl(rtl)
+	port map(
+		rst_n_in			=> RST_IN,
+		clk_in			=> not slow_clk,
+		speed_request	=> X"08",
+		speed_in			=> motor_speed,
+		torque_out 		=> torque
+	);	
+ 
+-- Speed Detector
+speed : entity work.speed(rtl)
+	port map(
+		rst_n_in			=> RST_IN,
+		clk_in			=> not slow_clk,
+		filter_len_in	=> X"00",
+		resolver_in		=> resolver_signal(23 downto 8),
+		speed_out		=> motor_speed
+	);	
+	
+-- Free running open loop position indexer
+counter : entity work.counter(rtl)
+	port map(
+		rst_n_in 	=> RST_IN,
+		clk_in 		=> slow_clk,
+		ena_in 		=> freerunning_ena,
+		dir_in 		=> NES_A,
+		prescale_in	=> SPEED_CTRL_IN,
+		counter_out => freerunning_position
+	 );
+
+-- Closed loop controller
+closed_loop : entity work.closed_loop(rtl)
+	port map(
+		rst_n_in 	=> RST_IN,
+		clk_in 		=> slow_clk,
+		ena_in 		=> closed_loop_ena,
+		dir_in 		=> NES_A,
+		commutation_position_in	=> commutation_position,
+		offset_in	=> closed_loop_offset,
+		position_in => resolver_signal(23 downto 8),
+		position_out => closed_loop_position
+	 );	 
+	 
+position <= freerunning_position when freerunning_ena = '1' else raw_position; --closed_loop_position;
 
 -- Instantiate and connect three phase generator
 three_phase_lookup : entity work.three_phase(rtl)
@@ -185,104 +283,125 @@ three_phase_lookup : entity work.three_phase(rtl)
 		sine_wl		=> pwm_wl
 	);
 	
-	process (POWER_CTRL_IN, CHARGE, DEBUG_PHASE) begin
-		if(CHARGE = '0') then
-			pwm_masked_uh <= (others => '0');
-			pwm_masked_ul <= "0011111111";
-			pwm_masked_vh <= (others => '0');
-			pwm_masked_vl <= "0011111111";
-			pwm_masked_wh <= (others => '0');
-			pwm_masked_wl <= "0011111111";
-		elsif(DEBUG = '1') then
-			if(DEBUG_PHASE = "01" and NES_A = '0') then		-- Debug Phase U Lock
-				pwm_masked_uh <= "0011111000";
-				pwm_masked_ul <= (others => '0');
-				pwm_masked_vh <= (others => '0');
-				pwm_masked_vl <= "1111111000";
-				pwm_masked_wh <= (others => '0');
-				pwm_masked_wl <= "1111111000";
-			elsif(DEBUG_PHASE = "10" and NES_A = '0') then		-- Debug Phase V Lock
-				pwm_masked_uh <= (others => '0');
-				pwm_masked_ul <= "1111111000";
-				pwm_masked_vh <= "0011111000";
-				pwm_masked_vl <= (others => '0');
-				pwm_masked_wh <= (others => '0');
-				pwm_masked_wl <= "1111111000";
-			elsif(DEBUG_PHASE = "11" and NES_A = '0') then		-- Debug Phase W Lock
-				pwm_masked_uh <= (others => '0');
-				pwm_masked_ul <= "1111111000";
-				pwm_masked_vh <= (others => '0');
-				pwm_masked_vl <= "1111111000";
-				pwm_masked_wh <= "0011111000";
-				pwm_masked_wl <= (others => '0');
-			else
-				pwm_masked_uh <= (others => '0');
-				pwm_masked_ul <= "1111111000";
-				pwm_masked_vh <= (others => '0');
-				pwm_masked_vl <= "1111111000";
-				pwm_masked_wh <= (others => '0');
-				pwm_masked_wl <= "1111111000";
-			end if;
-		else
-			if(POWER_CTRL_IN = X"7") then
-				pwm_masked_uh <= pwm_uh(9 downto 0);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= pwm_vh(9 downto 0);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= pwm_wh(9 downto 0);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"6") then
-				pwm_masked_uh <= "0" & pwm_uh(9 downto 1);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "0" & pwm_vh(9 downto 1);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "0" & pwm_wh(9 downto 1);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"5") then
-				pwm_masked_uh <= "00" & pwm_uh(9 downto 2);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "00" & pwm_vh(9 downto 2);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "00" & pwm_wh(9 downto 2);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"4") then
-				pwm_masked_uh <= "000" & pwm_uh(9 downto 3);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "000" & pwm_vh(9 downto 3);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "000" & pwm_wh(9 downto 3);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"3") then
-				pwm_masked_uh <= "0000" & pwm_uh(9 downto 4);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "0000" & pwm_vh(9 downto 4);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "0000" & pwm_wh(9 downto 4);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"2") then
-				pwm_masked_uh <= "00000" & pwm_uh(9 downto 5);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "00000" & pwm_vh(9 downto 5);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "00000" & pwm_wh(9 downto 5);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			elsif(POWER_CTRL_IN = X"1") then
-				pwm_masked_uh <= "000000" & pwm_uh(9 downto 6);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "000000" & pwm_vh(9 downto 6);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "000000" & pwm_wh(9 downto 6);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			else
-				pwm_masked_uh <= "0000000" & pwm_uh(9 downto 7);
-				pwm_masked_ul <= pwm_ul(9 downto 0);
-				pwm_masked_vh <= "0000000" & pwm_vh(9 downto 7);
-				pwm_masked_vl <= pwm_vl(9 downto 0);
-				pwm_masked_wh <= "0000000" & pwm_wh(9 downto 7);
-				pwm_masked_wl <= pwm_wl(9 downto 0);
-			end if;
-		end if;
-	end process;
+--	process (POWER_CTRL_IN, CHARGE, DEBUG_PHASE) begin
+--		if(CHARGE = '0') then
+--			pwm_masked_uh <= (others => '0');
+--			pwm_masked_ul <= "0011111111";
+--			pwm_masked_vh <= (others => '0');
+--			pwm_masked_vl <= "0011111111";
+--			pwm_masked_wh <= (others => '0');
+--			pwm_masked_wl <= "0011111111";
+--		elsif(DEBUG = '1') then
+--			if(DEBUG_PHASE = "001" and NES_A = '0') then		-- Debug Phase U Lock
+--				pwm_masked_uh <= "0011111000";
+--				pwm_masked_ul <= (others => '0');
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "0011111000";
+--				pwm_masked_wh <= (others => '0');
+--				pwm_masked_wl <= "0011111000";
+--			elsif(DEBUG_PHASE = "010" and NES_A = '0') then		-- Debug Phase V Lock
+--				pwm_masked_uh <= "0011111000";
+--				pwm_masked_ul <= (others => '0');
+--				pwm_masked_vh <= "0011111000";
+--				pwm_masked_vl <= (others => '0');
+--				pwm_masked_wh <= (others => '0');
+--				pwm_masked_wl <= "1111111000";
+--			elsif(DEBUG_PHASE = "011" and NES_A = '0') then		-- Debug Phase W Lock
+--				pwm_masked_uh <= (others => '0');
+--				pwm_masked_ul <= "1111111000";
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "1111111000";
+--				pwm_masked_wh <= "0011111000";
+--				pwm_masked_wl <= (others => '0');
+--			elsif(DEBUG_PHASE = "100" and NES_A = '0') then		-- Debug Phase W Lock
+--				pwm_masked_uh <= (others => '0');
+--				pwm_masked_ul <= "1111111000";
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "1111111000";
+--				pwm_masked_wh <= "0011111000";
+--				pwm_masked_wl <= (others => '0');
+--			elsif(DEBUG_PHASE = "101" and NES_A = '0') then		-- Debug Phase W Lock
+--				pwm_masked_uh <= (others => '0');
+--				pwm_masked_ul <= "1111111000";
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "1111111000";
+--				pwm_masked_wh <= "0011111000";
+--				pwm_masked_wl <= (others => '0');
+--			elsif(DEBUG_PHASE = "110" and NES_A = '0') then		-- Debug Phase W Lock
+--				pwm_masked_uh <= (others => '0');
+--				pwm_masked_ul <= "1111111000";
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "1111111000";
+--				pwm_masked_wh <= "0011111000";
+--				pwm_masked_wl <= (others => '0');
+--			else
+--				pwm_masked_uh <= (others => '0');
+--				pwm_masked_ul <= "1111111000";
+--				pwm_masked_vh <= (others => '0');
+--				pwm_masked_vl <= "1111111000";
+--				pwm_masked_wh <= (others => '0');
+--				pwm_masked_wl <= "1111111000";
+--			end if;
+--		else
+--			if(POWER_CTRL_IN = X"7") then
+--				pwm_masked_uh <= pwm_uh(9 downto 0);
+--				pwm_masked_ul <= pwm_ul(9 downto 0);
+--				pwm_masked_vh <= pwm_vh(9 downto 0);
+--				pwm_masked_vl <= pwm_vl(9 downto 0);
+--				pwm_masked_wh <= pwm_wh(9 downto 0);
+--				pwm_masked_wl <= pwm_wl(9 downto 0);
+--			elsif(POWER_CTRL_IN = X"6") then
+--				pwm_masked_uh <= "0" & pwm_uh(9 downto 1);
+--				pwm_masked_ul <= "0" & pwm_ul(9 downto 1);
+--				pwm_masked_vh <= "0" & pwm_vh(9 downto 1);
+--				pwm_masked_vl <= "0" & pwm_vl(9 downto 1);
+--				pwm_masked_wh <= "0" & pwm_wh(9 downto 1);
+--				pwm_masked_wl <= "0" & pwm_wl(9 downto 1);
+--			elsif(POWER_CTRL_IN = X"5") then
+--				pwm_masked_uh <= "00" & pwm_uh(9 downto 2);
+--				pwm_masked_ul <= "00" & pwm_ul(9 downto 2);
+--				pwm_masked_vh <= "00" & pwm_vh(9 downto 2);
+--				pwm_masked_vl <= "00" & pwm_vl(9 downto 2);
+--				pwm_masked_wh <= "00" & pwm_wh(9 downto 2);
+--				pwm_masked_wl <= "00" & pwm_wl(9 downto 2);
+--			elsif(POWER_CTRL_IN = X"4") then
+--				pwm_masked_uh <= "000" & pwm_uh(9 downto 3);
+--				pwm_masked_ul <= "000" & pwm_ul(9 downto 3);
+--				pwm_masked_vh <= "000" & pwm_vh(9 downto 3);
+--				pwm_masked_vl <= "000" & pwm_vl(9 downto 3);
+--				pwm_masked_wh <= "000" & pwm_wh(9 downto 3);
+--				pwm_masked_wl <= "000" & pwm_wl(9 downto 3);
+--			elsif(POWER_CTRL_IN = X"3") then
+--				pwm_masked_uh <= "0000" & pwm_uh(9 downto 4);
+--				pwm_masked_ul <= "0000" & pwm_ul(9 downto 4);
+--				pwm_masked_vh <= "0000" & pwm_vh(9 downto 4);
+--				pwm_masked_vl <= "0000" & pwm_vl(9 downto 4);
+--				pwm_masked_wh <= "0000" & pwm_wh(9 downto 4);
+--				pwm_masked_wl <= "0000" & pwm_wl(9 downto 4);
+--			elsif(POWER_CTRL_IN = X"2") then
+--				pwm_masked_uh <= "00000" & pwm_uh(9 downto 5);
+--				pwm_masked_ul <= "00000" & pwm_ul(9 downto 5);
+--				pwm_masked_vh <= "00000" & pwm_vh(9 downto 5);
+--				pwm_masked_vl <= "00000" & pwm_vl(9 downto 5);
+--				pwm_masked_wh <= "00000" & pwm_wh(9 downto 5);
+--				pwm_masked_wl <= "00000" & pwm_wl(9 downto 5);
+--			elsif(POWER_CTRL_IN = X"1") then
+--				pwm_masked_uh <= "000000" & pwm_uh(9 downto 6);
+--				pwm_masked_ul <= "000000" & pwm_ul(9 downto 6);
+--				pwm_masked_vh <= "000000" & pwm_vh(9 downto 6);
+--				pwm_masked_vl <= "000000" & pwm_vl(9 downto 6);
+--				pwm_masked_wh <= "000000" & pwm_wh(9 downto 6);
+--				pwm_masked_wl <= "000000" & pwm_wl(9 downto 6);
+--			else
+--				pwm_masked_uh <= "0000000" & pwm_uh(9 downto 7);
+--				pwm_masked_ul <= "0000000" & pwm_ul(9 downto 7);
+--				pwm_masked_vh <= "0000000" & pwm_vh(9 downto 7);
+--				pwm_masked_vl <= "0000000" & pwm_vl(9 downto 7);
+--				pwm_masked_wh <= "0000000" & pwm_wh(9 downto 7);
+--				pwm_masked_wl <= "0000000" & pwm_wl(9 downto 7);
+--			end if;
+--		end if;
+--	end process;
 
 uh_pwm : entity work.pwm(rtl)
 	port map(
@@ -388,7 +507,7 @@ resolver: entity work.spi(rtl)
 	port map(
 		reset_n => RST_IN,
 		clk_in => clk_40,
-		trigger_reading => clk_2k,
+		trigger_reading => slow_clk,
 		spi_data_o => resolver_signal,
 		
 		-- Test rig
@@ -407,8 +526,9 @@ resolver: entity work.spi(rtl)
 --==============================================
 -- Stateless Signals
 --==============================================
-	 leds_out(0) <= not nes_b;
-	 leds_out(1) <= not nes_a;
-	 leds_out(7) <= not dr(0);
+	leds_out <= (not uh_signal & not vh_signal & not wh_signal & not ul_signal & not vl_signal & not wl_signal & slow_clk & nes_b)
+		when phase_leds = '1' else 
+			(RST_IN & charge & debug & freerunning_ena & debug_phase & closed_loop_ena & dr(0));
 	 brake_out <= not nes_b;
+	 
 end architecture rtl;
