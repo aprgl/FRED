@@ -145,6 +145,18 @@ architecture rtl of FRED is
 					dr <= X"000000" & motor_speed;
 				elsif(ir = X"11") then
 					dr <= X"00000" & "00"&torque;
+				elsif(ir = X"12") then
+					dr <= X"00000" & "00"&pwm_masked_uh;
+				elsif(ir = X"13") then
+					dr <= X"00000" & "00"&pwm_masked_ul;
+				elsif(ir = X"14") then
+					dr <= X"00000" & "00"&pwm_masked_vh;
+				elsif(ir = X"15") then
+					dr <= X"00000" & "00"&pwm_masked_vl;
+				elsif(ir = X"16") then
+					dr <= X"00000" & "00"&pwm_masked_wh;
+				elsif(ir = X"17") then
+					dr <= X"00000" & "00"&pwm_masked_wl;
 				else
 					dr <= X"00000000";
 				end if;
@@ -264,7 +276,7 @@ closed_loop : entity work.closed_loop(rtl)
 		position_out => closed_loop_position
 	 );	 
 	 
-position <= freerunning_position when freerunning_ena = '1' else raw_position; --closed_loop_position;
+position <= closed_loop_position when closed_loop_ena = '1' else raw_position;
 
 -- Instantiate and connect three phase generator
 three_phase_lookup : entity work.three_phase(rtl)
@@ -350,58 +362,6 @@ three_phase_lookup : entity work.three_phase(rtl)
 --				pwm_masked_vl <= pwm_vl(9 downto 0);
 --				pwm_masked_wh <= pwm_wh(9 downto 0);
 --				pwm_masked_wl <= pwm_wl(9 downto 0);
---			elsif(POWER_CTRL_IN = X"6") then
---				pwm_masked_uh <= "0" & pwm_uh(9 downto 1);
---				pwm_masked_ul <= "0" & pwm_ul(9 downto 1);
---				pwm_masked_vh <= "0" & pwm_vh(9 downto 1);
---				pwm_masked_vl <= "0" & pwm_vl(9 downto 1);
---				pwm_masked_wh <= "0" & pwm_wh(9 downto 1);
---				pwm_masked_wl <= "0" & pwm_wl(9 downto 1);
---			elsif(POWER_CTRL_IN = X"5") then
---				pwm_masked_uh <= "00" & pwm_uh(9 downto 2);
---				pwm_masked_ul <= "00" & pwm_ul(9 downto 2);
---				pwm_masked_vh <= "00" & pwm_vh(9 downto 2);
---				pwm_masked_vl <= "00" & pwm_vl(9 downto 2);
---				pwm_masked_wh <= "00" & pwm_wh(9 downto 2);
---				pwm_masked_wl <= "00" & pwm_wl(9 downto 2);
---			elsif(POWER_CTRL_IN = X"4") then
---				pwm_masked_uh <= "000" & pwm_uh(9 downto 3);
---				pwm_masked_ul <= "000" & pwm_ul(9 downto 3);
---				pwm_masked_vh <= "000" & pwm_vh(9 downto 3);
---				pwm_masked_vl <= "000" & pwm_vl(9 downto 3);
---				pwm_masked_wh <= "000" & pwm_wh(9 downto 3);
---				pwm_masked_wl <= "000" & pwm_wl(9 downto 3);
---			elsif(POWER_CTRL_IN = X"3") then
---				pwm_masked_uh <= "0000" & pwm_uh(9 downto 4);
---				pwm_masked_ul <= "0000" & pwm_ul(9 downto 4);
---				pwm_masked_vh <= "0000" & pwm_vh(9 downto 4);
---				pwm_masked_vl <= "0000" & pwm_vl(9 downto 4);
---				pwm_masked_wh <= "0000" & pwm_wh(9 downto 4);
---				pwm_masked_wl <= "0000" & pwm_wl(9 downto 4);
---			elsif(POWER_CTRL_IN = X"2") then
---				pwm_masked_uh <= "00000" & pwm_uh(9 downto 5);
---				pwm_masked_ul <= "00000" & pwm_ul(9 downto 5);
---				pwm_masked_vh <= "00000" & pwm_vh(9 downto 5);
---				pwm_masked_vl <= "00000" & pwm_vl(9 downto 5);
---				pwm_masked_wh <= "00000" & pwm_wh(9 downto 5);
---				pwm_masked_wl <= "00000" & pwm_wl(9 downto 5);
---			elsif(POWER_CTRL_IN = X"1") then
---				pwm_masked_uh <= "000000" & pwm_uh(9 downto 6);
---				pwm_masked_ul <= "000000" & pwm_ul(9 downto 6);
---				pwm_masked_vh <= "000000" & pwm_vh(9 downto 6);
---				pwm_masked_vl <= "000000" & pwm_vl(9 downto 6);
---				pwm_masked_wh <= "000000" & pwm_wh(9 downto 6);
---				pwm_masked_wl <= "000000" & pwm_wl(9 downto 6);
---			else
---				pwm_masked_uh <= "0000000" & pwm_uh(9 downto 7);
---				pwm_masked_ul <= "0000000" & pwm_ul(9 downto 7);
---				pwm_masked_vh <= "0000000" & pwm_vh(9 downto 7);
---				pwm_masked_vl <= "0000000" & pwm_vl(9 downto 7);
---				pwm_masked_wh <= "0000000" & pwm_wh(9 downto 7);
---				pwm_masked_wl <= "0000000" & pwm_wl(9 downto 7);
---			end if;
---		end if;
---	end process;
 
 uh_pwm : entity work.pwm(rtl)
 	port map(

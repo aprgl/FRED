@@ -30,15 +30,12 @@ Port (
 	-- Command Ouput
 	position_out	: out	std_logic_vector(9 downto 0)
 	 
-    );
+	);
 end entity closed_loop;
 
 architecture rtl of closed_loop is
-    
-    signal temp    : std_logic_vector(17 downto 0)  :=  (others => '0');
-	 
+	signal temp    : std_logic_vector(31 downto 0)  :=  (others => '0');
 begin
-    
     --========================================================================
     -- Counter Logic
     --========================================================================
@@ -50,11 +47,11 @@ begin
             end if;
 
 				if (ena_in = '1') then
-					temp <= (("0" & position_in & "0") + position_in + commutation_position_in + (offset_in & "000" & X"0"));
+					temp <= std_logic_vector(unsigned(position_in)*((67043328)/(65536/3)));
 				end if;
         end if;
     end process ctrl_proc;
 	 
-	 position_out <= temp(16 downto 7);
+	 position_out <= temp(25 downto 16);
 	 
 end architecture rtl;

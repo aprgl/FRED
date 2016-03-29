@@ -41,12 +41,12 @@ architecture rtl of pwm_scale is
 	
 	 pwm_scale_proc: process (clk_in, rst_n_in, torque_in) begin
 	 if rising_edge(clk_in) then
-		pwm_uh_out <= std_logic_vector(unsigned(pwm_uh_in)/(1024-unsigned(torque_in)));
-		pwm_ul_out <= std_logic_vector(unsigned(pwm_ul_in)/(1024-unsigned(torque_in)));
-		pwm_vh_out <= std_logic_vector(unsigned(pwm_vh_in)/(1024-unsigned(torque_in)));
-		pwm_vl_out <= std_logic_vector(unsigned(pwm_vl_in)/(1024-unsigned(torque_in)));
-		pwm_wh_out <= std_logic_vector(unsigned(pwm_wh_in)/(1024-unsigned(torque_in)));
-		pwm_wl_out <= std_logic_vector(unsigned(pwm_wl_in)/(1024-unsigned(torque_in)));
+		pwm_uh_out <= std_logic_vector((unsigned("00"&X"00"&pwm_uh_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
+		pwm_ul_out <= std_logic_vector((unsigned("00"&X"00"&pwm_ul_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
+		pwm_vh_out <= std_logic_vector((unsigned("00"&X"00"&pwm_vh_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
+		pwm_vl_out <= std_logic_vector((unsigned("00"&X"00"&pwm_vl_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
+		pwm_wh_out <= std_logic_vector((unsigned("00"&X"00"&pwm_wh_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
+		pwm_wl_out <= std_logic_vector((unsigned("00"&X"00"&pwm_wl_in)*unsigned(torque_in&"00"&X"00"))/1024)(19 downto 10);
     end if;
     end process pwm_scale_proc;
     -------------------------------------------------------------------------
