@@ -6,7 +6,7 @@ use ieee.std_logic_unsigned.all;
 --============================================================================
 --  Three Phase Shenanigans
 --============================================================================
--- Generate three phase 10 bit high and low signals from a 10 bit input.
+-- Generate three phase 10 bit high and low signals from a 21845 bit input.
 -- Version: 0.0.0 Initial Commit -Shaun
 ------------------------------------------------------------------------------
 
@@ -83,7 +83,7 @@ begin
 	--  SINE ROM
 	--=============================================================================================
 	-- sine lookup table 
-	-- Currently 1024 steps/resolution at 11 bit magnitude resolution
+	-- Currently 21845 steps/resolution at 11 bit magnitude resolution
 	-----------------------------------------------------------------------------------------------
 	lookup : entity work.sine_lookup(SYN)
 	port map(

@@ -87,7 +87,6 @@ architecture rtl of FRED is
 	signal address				: std_logic_vector(1 downto 0) := (others => '0');
 	signal resolver_control	: std_logic_vector(3 downto 0);
 	signal resolver_position : std_logic_vector(15 downto 0);
-	signal sample_signal		: std_logic;
 
 	-- Control Registers
 	signal speed_ctrl_in 	: std_logic_vector(7 downto 0) := X"0F";		-- 0x01
@@ -103,14 +102,22 @@ architecture rtl of FRED is
 	signal closed_loop_ena	: std_logic := '0';									-- 0x0D
 	signal closed_loop_offset: std_logic_vector(9 downto 0) := "00"&X"00"; -- 0x0E
 	signal raw_position		: std_logic_vector(9 downto 0); 					-- 0x0F
-	signal speed_request		: std_logic_vector(7 downto 0);					-- 0x18
+	signal speed_request		: std_logic_vector(15 downto 0);					-- 0x18
+	signal position_request	: std_logic_vector(15 downto 0);					-- 0x19 25
+	signal Kp_signal			: std_logic_vector(7 downto 0);					-- 0x1C 28
+	signal Ki_signal			: std_logic_vector(7 downto 0);					-- 0x1D 29
+	signal Kd_signal			: std_logic_vector(7 downto 0);					-- 0x1E 30
 	
 	-- Closed Loop Control Signals
 	signal closed_loop_position		: std_logic_vector(9 downto 0) := "00"&X"00";
 	
 	-- Sensors
-	signal motor_speed	: std_logic_vector(7 downto 0);
-	signal torque			: std_logic_vector(9 downto 0);
+	signal motor_speed		: std_logic_vector(15 downto 0);
+	signal torque				: std_logic_vector(9 downto 0);
+	signal position_error_signal	: std_logic_vector(15 downto 0);				-- 0x1A
+	signal position_hysteresis	: std_logic_vector(7 downto 0);					-- 0x1B
+	signal position_error_dir	: std_logic;
+	signal speed_pid_out			: std_logic_vector(15 downto 0);					-- 0x1F
 	
 	begin
  
@@ -147,7 +154,7 @@ architecture rtl of FRED is
 				elsif(ir = X"04") then
 					dr <= X"0000000" & "000" & nes_b;
 				elsif(ir = X"10") then
-					dr <= X"000000" & motor_speed;
+					dr <= X"0000" & motor_speed;
 				elsif(ir = X"11") then
 					dr <= X"00000" & "00"&torque;
 				elsif(ir = X"12") then
@@ -162,6 +169,10 @@ architecture rtl of FRED is
 					dr <= X"00000" & "00"&pwm_masked_wh;
 				elsif(ir = X"17") then
 					dr <= X"00000" & "00"&pwm_masked_wl;
+				elsif(ir = X"1A") then
+					dr <= X"0000" & position_error_signal;
+				elsif(ir = X"1F") then
+					dr <= X"0000" & speed_pid_out;
 				else
 					dr <= X"00000000";
 				end if;
@@ -202,14 +213,24 @@ architecture rtl of FRED is
 			elsif(ir = X"0F") then
 				raw_position <= dr(9 downto 0);
 			elsif(ir = X"18") then
-				speed_request <= dr(7 downto 0);
+				speed_request <= dr(15 downto 0);
+			elsif(ir = X"19") then
+				position_request <= dr(15 downto 0);
+			elsif(ir = X"1B") then
+				position_hysteresis <= dr(7 downto 0);	
+			elsif(ir = X"1C") then
+				Kp_signal <= dr(7 downto 0);
+			elsif(ir = X"1D") then
+				Ki_signal <= dr(7 downto 0);
+			elsif(ir = X"1E") then
+				Kd_signal <= dr(7 downto 0);			
 			end if;
 		end if;
 	end process;
 	
 	slow_clk_proc: process (clk_600k) begin
         if( rising_edge(clk_600k) ) then
-            if( count = X"FE") then
+            if( count = X"05") then
                 count <= (others => '0');
 					 slow_clk <= not slow_clk;
             end if;
@@ -238,6 +259,31 @@ pwm_scale : entity work.pwm_scale(rtl)
 		pwm_wh_out	=> torque_wh,
 		pwm_wl_out	=> torque_wl
 	);	
+
+-- PID Calculator
+speed_pid : entity work.pid(rtl)
+	port map(
+		rst_n_in		=> RST_IN,
+		clk_in		=> not slow_clk,
+		Kp_in			=> Kp_signal,
+		Ki_in			=> Ki_signal,
+		Kd_in			=> Kd_signal,
+		signal_in	=> position_error_signal,
+		signal_out	=> speed_pid_out
+	);
+
+-- Position Error Calculator
+position_error : entity work.position_error(rtl)
+	port map(
+		rst_n_in			=> RST_IN,
+		clk_in			=> not slow_clk,
+		position_in		=> resolver_signal(23 downto 8),
+		request_in		=> position_request,
+		hysteresis_in	=> position_hysteresis,
+		error_out 		=> position_error_signal,
+		dir_out			=> position_error_dir
+	);
+	
 	
 -- Torque Detector
 torque_ctrl : entity work.torque_ctrl(rtl)
@@ -376,11 +422,8 @@ uh_pwm : entity work.pwm(rtl)
 		clk_in		=> clk_40,
 		ena_in      => '1',
 		value_in		=> pwm_masked_uh,
-		pwm_out     => uh_signal,
-		sample_out	=> sample_signal				--  Right now this is super sketchy because I can't be positive all the PWM blocks are synchronized but let's just pretend they are... 
+		pwm_out     => uh_signal
 	);
-
-SAMPLE_OUT <= not sample_signal;
 
 vh_pwm : entity work.pwm(rtl)
 	port map(
@@ -476,14 +519,13 @@ resolver: entity work.spi(rtl)
 		clk_in => clk_40,
 		trigger_reading => slow_clk,
 		spi_data_o => resolver_signal,
-		
 		-- Test rig
 		switches_in => resolver_control,
 		
 		-- AD2S1210 
 		A => A_OUT,
 		RES => RES_OUT,
-		-- sample_o => SAMPLE_OUT,
+		sample_o => SAMPLE_OUT,
 		WR_N_o => WR_OUT,
 		SCLK => SCLK_OUT,
 		MISO => MISO_IN,
@@ -493,7 +535,7 @@ resolver: entity work.spi(rtl)
 --==============================================
 -- Stateless Signals
 --==============================================
-	leds_out <= (not uh_signal & not vh_signal & not wh_signal & not ul_signal & not vl_signal & not wl_signal & slow_clk & nes_b)
+	leds_out <= (not uh_signal & not vh_signal & not wh_signal & not ul_signal & not vl_signal & not wl_signal & position_error_dir & nes_b)
 		when phase_leds = '1' else 
 			(RST_IN & charge & debug & freerunning_ena & debug_phase & closed_loop_ena & dr(0));
 	 brake_out <= not nes_b;

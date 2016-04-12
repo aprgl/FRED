@@ -41,6 +41,7 @@
 *.sip
 *.spd
 *.f
+*.cdf
 # *.sdc # I want those timing files
 *_INFO*
 *_dump*
@@ -54,6 +55,7 @@ testbench/
 *_sim/
 output_files/
 pll_core/
+.qsys_edit/
 
 # Compiled source #
 ###################

@@ -14,8 +14,8 @@ entity torque_ctrl is
 Port (
     rst_n_in		: in 	std_logic	:= '1';
     clk_in			: in	std_logic;
-	 speed_request : in 	std_logic_vector(7 downto 0)	:= (Others => '0');
-    speed_in		: in	std_logic_vector(7 downto 0)	:= (Others => '0');
+	 speed_request : in 	std_logic_vector(15 downto 0)	:= (Others => '0');
+    speed_in		: in	std_logic_vector(15 downto 0)	:= (Others => '0');
     torque_out		: out	std_logic_vector(9 downto 0)	:= (Others => '0')
 	 );
 end entity torque_ctrl;

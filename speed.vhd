@@ -16,7 +16,7 @@ Port (
     clk_in			: in	std_logic;
 	 filter_len_in	: in	std_logic_vector(7 downto 0)	:= (Others => '0');
     resolver_in	: in	std_logic_vector(15 downto 0) := (Others => '0');
-    speed_out		: out	std_logic_vector(7 downto 0)	:= (Others => '0')
+    speed_out		: out	std_logic_vector(15 downto 0)	:= (Others => '0')
 	 );
 end entity speed;
 
@@ -39,7 +39,7 @@ architecture rtl of speed is
 		-- speed_sum <= speed_sum + delta;
 		resolver_last <= resolver_in;
 		--speed_avg <= unsigned(speed_sum)/8;
-		speed_out <= delta(7 downto 0);
+		speed_out <= delta(15 downto 0);
     end if;
     end process speed_calc_proc;
     -------------------------------------------------------------------------

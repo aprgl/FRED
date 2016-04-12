@@ -49,9 +49,9 @@ begin
 
 				if (ena_in = '1')	then
 					if (dir_in = '1') then
-						temp <= std_logic_vector(67043328-(unsigned(position_in+commutation_position_in+X"1555")*((67043328)/(65536/3)))); --67043328 = 1024<<16, +90 degrees
+						temp <= std_logic_vector(67043328-(unsigned(position_in+commutation_position_in+X"1555")*((67043328)/(65536/3)))); --67043328 = 1024<<16, +90 degrees commutation_position_in
 					else
-						temp <= std_logic_vector(67043328-(unsigned(position_in+commutation_position_in-X"1555")*((67043328)/(65536/3)))); --67043328 = 1024<<16, -90 degrees
+						temp <= std_logic_vector(67043328-(unsigned(position_in+commutation_position_in-X"1555")*((67043328)/(65536/3)))); --67043328 = 1024<<16, -90 degrees commutation_position_in-X"1555"
 					end if;
 				end if;
         end if;
