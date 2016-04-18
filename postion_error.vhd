@@ -20,42 +20,65 @@ Port (
 	clk_in		: in	std_logic;
 	
 	-- Control Signals
-	ena_in		: in	std_logic	:= '1';
+	ena_in		: in std_logic	:= '1';
 	request_in	: in std_logic_vector(15 downto 0);
+	home_set_in	: in std_logic := '0';
 	
 	-- Registers
 	hysteresis_in	: in std_logic_vector(7 downto 0) := (others => '0');
 	
 	-- Sensor Signal
-	position_in		: in	std_logic_vector(15 downto 0);
+	resolver_in		: in	std_logic_vector(15 downto 0);
 	
 	-- Ouput
 	error_out	: out	std_logic_vector(15 downto 0);
-	dir_out		: out	std_logic
-	 
+	dir_out		: out	std_logic;
+	absolute_position_out	: out	std_logic_vector(22 downto 0)
 	);
 end entity position_error;
 
 architecture rtl of position_error is
+	
 	signal temp    : std_logic_vector(15 downto 0)  :=  (others => '0');
+	signal absolute_position	: std_logic_vector(22 downto 0)	:= (Others => '0');
+	signal resolver_last	: std_logic_vector(15 downto 0)  :=  (others => '0');
+	
 begin
     --========================================================================
     -- Error Calculation Logic
     --========================================================================
 	 
-    error_proc: process (clk_in, rst_n_in, request_in, position_in, hysteresis_in) begin
+    error_proc: process (clk_in, rst_n_in, request_in, resolver_in, hysteresis_in, home_set_in) begin
         if( rising_edge(clk_in) ) then
             if( rst_n_in = '0') then
 					 temp <= (others => '0');
 					 dir_out <= '1';
             end if;
-
+				
+				if(home_set_in = '1') then
+					absolute_position <= "011" & X"F" & resolver_in;
+					
+				elsif ((resolver_in > resolver_last) and ((resolver_in - resolver_last) < X"8FFF")) then
+					absolute_position <= absolute_position + (resolver_in - resolver_last);
+					
+				elsif ((resolver_in > resolver_last) and ((resolver_in - resolver_last) > X"8FFF")) then
+					absolute_position <= absolute_position - ((X"FFFF" - resolver_in) + resolver_last);
+				
+				elsif ((resolver_in < resolver_last) and ((resolver_last - resolver_in) < X"8FFF")) then
+					absolute_position <= absolute_position - (resolver_last - resolver_in);
+				
+				elsif ((resolver_in < resolver_last) and ((resolver_last - resolver_in) > X"8FFF")) then
+					absolute_position <= absolute_position + ((X"FFFF" - resolver_last) + resolver_in);
+				end if;
+				
+				resolver_last <= resolver_in;
+				
 				if (ena_in = '1')	then
-					if (position_in < (request_in + hysteresis_in)) then
-						temp <= request_in - position_in;
+					if (resolver_in < (request_in + hysteresis_in)) then
+						temp <= request_in - resolver_in;
 						dir_out <= '1';
-					elsif (position_in > (request_in + hysteresis_in)) then
-						temp <= position_in - request_in;
+					elsif (resolver_in > (request_in + hysteresis_in)) then
+						temp <= resolver_in - request_in;
 						dir_out <= '0';
 					end if;
 				end if;
@@ -63,5 +86,6 @@ begin
     end process error_proc;
 	 
 	 error_out <= temp;
+	 absolute_position_out <= absolute_position;
 	 
 end architecture rtl;

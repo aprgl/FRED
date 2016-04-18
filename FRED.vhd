@@ -119,6 +119,15 @@ architecture rtl of FRED is
 	signal position_error_dir	: std_logic;
 	signal speed_pid_out			: std_logic_vector(15 downto 0);					-- 0x1F
 	
+	-- Absolute Position
+	signal home_set				: std_logic	:= '0';									-- 0x26 - 38
+	signal absolute_position	: std_logic_vector(22 downto 0);					-- 0x25
+	signal negative_hardstop	: std_logic_vector(22 downto 0);
+	signal negative_softstop	: std_logic_vector(22 downto 0);
+	signal home						: std_logic_vector(22 downto 0);
+	signal positive_softstop	: std_logic_vector(22 downto 0);
+	signal positive_hardstop	: std_logic_vector(22 downto 0);
+	
 	begin
  
 -- Instantiate PLL to generate system clock
@@ -173,6 +182,8 @@ architecture rtl of FRED is
 					dr <= X"0000" & position_error_signal;
 				elsif(ir = X"1F") then
 					dr <= X"0000" & speed_pid_out;
+				elsif(ir = X"25") then
+					dr <= X"00" & "0" & absolute_position;
 				else
 					dr <= X"00000000";
 				end if;
@@ -223,7 +234,19 @@ architecture rtl of FRED is
 			elsif(ir = X"1D") then
 				Ki_signal <= dr(7 downto 0);
 			elsif(ir = X"1E") then
-				Kd_signal <= dr(7 downto 0);			
+				Kd_signal <= dr(7 downto 0);
+			elsif(ir = X"20") then
+				negative_hardstop <= dr(22 downto 0);
+			elsif(ir = X"21") then
+				negative_softstop <= dr(22 downto 0);
+			elsif(ir = X"22") then
+				home <= dr(22 downto 0);
+			elsif(ir = X"23") then
+				positive_hardstop <= dr(22 downto 0);
+			elsif(ir = X"24") then
+				positive_softstop <= dr(22 downto 0);
+			elsif(ir = X"26") then								--38
+				home_set <= dr(0);
 			end if;
 		end if;
 	end process;
@@ -277,11 +300,19 @@ position_error : entity work.position_error(rtl)
 	port map(
 		rst_n_in			=> RST_IN,
 		clk_in			=> not slow_clk,
-		position_in		=> resolver_signal(23 downto 8),
+		resolver_in		=> resolver_signal(23 downto 8),
 		request_in		=> position_request,
+		home_set_in		=> home_set,
 		hysteresis_in	=> position_hysteresis,
 		error_out 		=> position_error_signal,
-		dir_out			=> position_error_dir
+		dir_out			=> position_error_dir,
+		
+		absolute_position_out => absolute_position
+		--negative_hardstop_in => negative_hardstop,
+		--negative_softstop_in => negative_softstop,
+		--home_in => home,
+		--positive_softstop_in => positive_softstop,
+		--positive_hardstop_in => positive_hardstop
 	);
 	
 	
