@@ -21,7 +21,7 @@ Port (
 	
 	-- Control Signals
 	ena_in		: in std_logic	:= '1';
-	request_in	: in std_logic_vector(15 downto 0);
+	request_in	: in std_logic_vector(22 downto 0);
 	home_set_in	: in std_logic := '0';
 	
 	-- Registers
@@ -31,7 +31,7 @@ Port (
 	resolver_in		: in	std_logic_vector(15 downto 0);
 	
 	-- Ouput
-	error_out	: out	std_logic_vector(15 downto 0);
+	error_out	: out	std_logic_vector(22 downto 0);
 	dir_out		: out	std_logic;
 	absolute_position_out	: out	std_logic_vector(22 downto 0)
 	);
@@ -39,7 +39,7 @@ end entity position_error;
 
 architecture rtl of position_error is
 	
-	signal temp    : std_logic_vector(15 downto 0)  :=  (others => '0');
+	signal temp    : std_logic_vector(22 downto 0)  :=  (others => '0');
 	signal absolute_position	: std_logic_vector(22 downto 0)	:= (Others => '0');
 	signal resolver_last	: std_logic_vector(15 downto 0)  :=  (others => '0');
 	
@@ -74,11 +74,11 @@ begin
 				resolver_last <= resolver_in;
 				
 				if (ena_in = '1')	then
-					if (resolver_in < (request_in + hysteresis_in)) then
-						temp <= request_in - resolver_in;
+					if (absolute_position < request_in) then
+						temp <= request_in - absolute_position;
 						dir_out <= '1';
-					elsif (resolver_in > (request_in + hysteresis_in)) then
-						temp <= resolver_in - request_in;
+					elsif (absolute_position > request_in) then
+						temp <= absolute_position - request_in;
 						dir_out <= '0';
 					end if;
 				end if;

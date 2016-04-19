@@ -25,7 +25,7 @@ Port (
 	Kd_in	: in std_logic_vector(7 downto 0) := (others => '0');
 	
 	-- Sensor Signal
-	signal_in	: in	std_logic_vector(15 downto 0);
+	signal_in	: in	std_logic_vector(22 downto 0);
 	
 	-- Ouput
 	signal_out	: out	std_logic_vector(15 downto 0)
@@ -35,9 +35,9 @@ end entity pid;
 
 architecture rtl of pid is
 
-	signal temp    : std_logic_vector(27 downto 0)  :=  (others => '0');
-	signal sum    : std_logic_vector(15 downto 0)  :=  (others => '0');
-	signal s0, s1, s2, s3, s4, s5, s6, s7	: std_logic_vector(15 downto 0)  :=  (others => '0');
+	signal temp    : std_logic_vector(34 downto 0)  :=  (others => '0');
+	signal sum    : std_logic_vector(22 downto 0)  :=  (others => '0');
+	signal s0, s1, s2, s3, s4, s5, s6, s7	: std_logic_vector(22 downto 0)  :=  (others => '0');
 
 begin
     --========================================================================
@@ -69,6 +69,6 @@ begin
 			end if;
     end process pid_proc;
 	 
-	 signal_out <= temp(27 downto 12);
+	 signal_out <= temp(34 downto 19);
 	 
 end architecture rtl;

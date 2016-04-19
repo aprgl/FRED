@@ -103,7 +103,7 @@ architecture rtl of FRED is
 	signal closed_loop_offset: std_logic_vector(9 downto 0) := "00"&X"00"; -- 0x0E
 	signal raw_position		: std_logic_vector(9 downto 0); 					-- 0x0F
 	signal speed_request		: std_logic_vector(15 downto 0);					-- 0x18
-	signal position_request	: std_logic_vector(15 downto 0);					-- 0x19 25
+	signal position_request	: std_logic_vector(22 downto 0);					-- 0x19 25
 	signal Kp_signal			: std_logic_vector(7 downto 0);					-- 0x1C 28
 	signal Ki_signal			: std_logic_vector(7 downto 0);					-- 0x1D 29
 	signal Kd_signal			: std_logic_vector(7 downto 0);					-- 0x1E 30
@@ -114,7 +114,7 @@ architecture rtl of FRED is
 	-- Sensors
 	signal motor_speed		: std_logic_vector(15 downto 0);
 	signal torque				: std_logic_vector(9 downto 0);
-	signal position_error_signal	: std_logic_vector(15 downto 0);				-- 0x1A
+	signal position_error_signal	: std_logic_vector(22 downto 0);				-- 0x1A
 	signal position_hysteresis	: std_logic_vector(7 downto 0);					-- 0x1B
 	signal position_error_dir	: std_logic;
 	signal speed_pid_out			: std_logic_vector(15 downto 0);					-- 0x1F
@@ -177,9 +177,9 @@ architecture rtl of FRED is
 				elsif(ir = X"16") then
 					dr <= X"00000" & "00"&pwm_masked_wh;
 				elsif(ir = X"17") then
-					dr <= X"00000" & "00"&pwm_masked_wl;
+					dr <= X"00000" & "00" & pwm_masked_wl;
 				elsif(ir = X"1A") then
-					dr <= X"0000" & position_error_signal;
+					dr <= X"00" & "0" & position_error_signal;
 				elsif(ir = X"1F") then
 					dr <= X"0000" & speed_pid_out;
 				elsif(ir = X"25") then
@@ -226,7 +226,7 @@ architecture rtl of FRED is
 			elsif(ir = X"18") then
 				speed_request <= dr(15 downto 0);
 			elsif(ir = X"19") then
-				position_request <= dr(15 downto 0);
+				position_request <= dr(22 downto 0);
 			elsif(ir = X"1B") then
 				position_hysteresis <= dr(7 downto 0);	
 			elsif(ir = X"1C") then
