@@ -36,7 +36,10 @@ Port (
 	MOSI_OUT		: out std_logic;
 	
 	brake_out	: out std_logic := '1';
-	leds_out		: out std_logic_vector(7 downto 0) := X"00"
+	leds_out		: out std_logic_vector(7 downto 0) := X"00";
+	
+	MAX1139_SCL	: inout std_logic := 'Z';
+	MAX1139_SDA	: inout std_logic := 'Z'
 	
 	--DEBUG_ENA	: in std_logic
 	
@@ -110,6 +113,18 @@ architecture rtl of FRED is
 	
 	-- Closed Loop Control Signals
 	signal closed_loop_position		: std_logic_vector(9 downto 0) := "00"&X"00";
+	
+	-- I2C Signals
+	signal i2c_ena			: std_logic;
+	signal i2c_busy		: std_logic;
+	signal i2c_rw			: std_logic;
+	signal i2c_data_wr	: std_logic_vector(7 downto 0);
+	signal i2c_data_rd	: std_logic_vector(7 downto 0);
+	
+	-- Closed Loop Current Control
+	signal u_current		:std_logic_vector(9 downto 0);
+	signal v_current		:std_logic_vector(9 downto 0);
+	signal w_current		:std_logic_vector(9 downto 0);
 	
 	-- Sensors
 	signal motor_speed		: std_logic_vector(15 downto 0);
@@ -315,6 +330,40 @@ position_error : entity work.position_error(rtl)
 		--positive_hardstop_in => positive_hardstop
 	);
 	
+phase_currents : entity work.MAX1139(rtl)
+	port map(
+		
+		-- Telemetry, Command & Control
+		clk_in			=> clk_40,
+		rst_n_in 		=> RST_IN,
+		data_rdy_out	=> i2c_ena,
+		tx_data_out		=> i2c_data_wr,
+		rx_data_in		=> i2c_data_rd,
+		i2c_busy_in		=> i2c_busy,
+		rw_out			=> i2c_rw,			--'0' is write, '1' is read
+		
+		-- Processed Data 
+		u_current_out	=> u_current,
+		v_current_out	=> v_current,
+		w_current_out	=> w_current
+	);
+		
+	
+-- I2C Master Library from eewiki.net
+i2c_master : entity work.i2c_master(logic)
+	port map(
+		clk       => clk_40,
+		reset_n   => RST_IN,			--active low reset
+		ena       => i2c_ena, 		--latch in command
+		addr      => "0110101",		--address of target slave set to MAX1139
+		rw        => i2c_rw, 		--'0' is write, '1' is read
+		data_wr   => i2c_data_wr,	--data to write to slave
+		busy      => i2c_busy, 		--indicates transaction in progress
+		data_rd   => i2c_data_rd, 	--data read from slave
+		--ack_error => 				--flag if improper acknowledge from slave	-- #recklessabandon
+		sda		 => MAX1139_SDA,  --serial data output of i2c bus
+		scl       => MAX1139_SCL	--serial clock output of i2c bus
+	);
 	
 -- Torque Detector
 torque_ctrl : entity work.torque_ctrl(rtl)
