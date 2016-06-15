@@ -49,6 +49,8 @@ architecture rtl of MAX1139 is
 							state_hold,
 							state_latch);
 	signal state, next_state: state_type := state_reset; -- legal?
+
+	signal i2c_busy_last	: std_logic;
 	
 	begin
 
@@ -158,33 +160,29 @@ architecture rtl of MAX1139 is
 			w_current <= w_current;
 
 		when state_read =>
-			next_state <= state_latch;
+			-- ***** pulled from eewiki's spi to i2c code
+			i2c_busy_last <= i2c_busy;
+			if(i2c_busy_last = '1' and i2c_busy = '0') then	-- Hot&Fresh Data
+				adc_reg <= adc_reg + '1';
+			end if;
+			-- ***** 
 
-			-- OUTPUTS --
-			tx_data_out <= (Others => '0');
-			data_rdy_out <= '1';
-			rw_out <= '1';					-- Reading
-			adc_reg <= adc_reg + '1';
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
-
-		when state_hold =>
-			if (i2c_busy_in = '0') then
-				next_state <= state_latch;
-			else 
-				next_state <= state_hold;
+			if (adc_reg < "0101") then	-- Check for all phase data
+				next_state <= state_read;
+			else
+				next_state <= state_reset;
 			end if;
 
 			-- OUTPUTS --
 			tx_data_out <= (Others => '0');
 			data_rdy_out <= '1';
 			rw_out <= '1';					-- Reading
-			adc_reg <= adc_reg;
 			u_current <= u_current;
 			v_current <= v_current;
 			w_current <= w_current;
 
+
+		-- Skipping for a hot second to test out if I get the 6 bytes I want
 		when state_latch =>
 			if (i2c_busy_in = '0') then
 				next_state <= state_latch;
