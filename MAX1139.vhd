@@ -172,7 +172,7 @@ architecture rtl of MAX1139 is
 		when state_latch =>
 			if (i2c_busy_in = '1') then
 				next_state <= state_latch;
-			elsif (adc_reg < "0011") then	-- Check for all phase data
+			elsif (adc_reg < "0111") then	-- Check for all phase data
 				next_state <= state_read;
 			else
 				next_state <= state_reset;
