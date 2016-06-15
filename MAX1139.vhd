@@ -158,8 +158,24 @@ architecture rtl of MAX1139 is
 			w_current <= w_current;
 
 		when state_read =>
-			next_state <= state_latch;
+			next_state <= state_hold;
 
+			-- OUTPUTS --
+			tx_data_out <= (Others => '0');
+			data_rdy_out <= '1';
+			rw_out <= '1';					-- Reading
+			adc_reg <= adc_reg + '1';
+			u_current <= u_current;
+			v_current <= v_current;
+			w_current <= w_current;
+
+		when state_hold =>
+			if (i2c_busy_in = '1') then
+				next_state <= state_latch;
+			else
+				next_state <= state_hold;
+			end if;
+			
 			-- OUTPUTS --
 			tx_data_out <= (Others => '0');
 			data_rdy_out <= '1';
