@@ -46,7 +46,6 @@ architecture rtl of MAX1139 is
 							state_config,
 							s_hold2,
 							state_read,
-							state_hold,
 							state_latch);
 	signal state, next_state: state_type := state_reset; -- legal?
 
@@ -161,16 +160,16 @@ architecture rtl of MAX1139 is
 
 		when state_read =>
 			-- ***** pulled from eewiki's spi to i2c code
-			i2c_busy_last <= i2c_busy;
-			if(i2c_busy_last = '1' and i2c_busy = '0') then	-- Hot&Fresh Data
+			i2c_busy_last <= i2c_busy_in;
+			if(i2c_busy_last = '0' and i2c_busy_in = '1') then	-- Hot&Fresh Data
 				adc_reg <= adc_reg + '1';
 			end if;
 			-- ***** 
 
-			if (adc_reg < "0101") then	-- Check for all phase data
+			if (adc_reg < "0110") then	-- Check for all phase data
 				next_state <= state_read;
 			else
-				next_state <= state_reset;
+				next_state <= state_latch;
 			end if;
 
 			-- OUTPUTS --
@@ -181,22 +180,14 @@ architecture rtl of MAX1139 is
 			v_current <= v_current;
 			w_current <= w_current;
 
-
-		-- Skipping for a hot second to test out if I get the 6 bytes I want
 		when state_latch =>
-			if (i2c_busy_in = '0') then
-				next_state <= state_latch;
-			elsif (adc_reg < "0101") then	-- Check for all phase data
-				next_state <= state_read;
-			else
-				next_state <= state_reset;
-			end if;
+			next_state <= state_reset;
 
 			-- OUTPUTS --
 			tx_data_out <= (Others => '0');
-			data_rdy_out <= '1';			-- Keep an eye on the =
-			rw_out <= '1';					-- Reading
-			adc_reg <= adc_reg;
+			data_rdy_out <= '0';			-- Keep an eye on the =
+			rw_out <= '0';					-- Reading
+			adc_reg <= (Others => '0');
 			if (adc_reg ="0001") then
 				u_current <= rx_data_in & "00";
 			elsif (adc_reg = "0011") then
