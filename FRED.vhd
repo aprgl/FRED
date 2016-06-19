@@ -192,13 +192,19 @@ architecture rtl of FRED is
 				elsif(ir = X"16") then
 					dr <= X"00000" & "00"&pwm_masked_wh;
 				elsif(ir = X"17") then
-					dr <= X"00000" & "00" & pwm_masked_wl;
+					dr <= X"00000" & "00"&pwm_masked_wl;
 				elsif(ir = X"1A") then
 					dr <= X"00" & "0" & position_error_signal;
 				elsif(ir = X"1F") then
 					dr <= X"0000" & speed_pid_out;
 				elsif(ir = X"25") then
 					dr <= X"00" & "0" & absolute_position;
+				elsif(ir = X"27") then
+					dr <= X"00000" & "00" & u_current;
+				elsif(ir = X"28") then
+					dr <= X"00000" & "00" & v_current;
+				elsif(ir = X"29") then
+					dr <= X"00000" & "00" & w_current;
 				else
 					dr <= X"00000000";
 				end if;
@@ -345,9 +351,11 @@ phase_currents : entity work.MAX1139(rtl)
 		-- Processed Data 
 		u_current_out	=> u_current,
 		v_current_out	=> v_current,
-		w_current_out	=> w_current
-	);
+		w_current_out	=> w_current,
 		
+		-- Trigger Signal
+		trigger_in		=> slow_clk
+	);
 	
 -- I2C Master Library from eewiki.net
 i2c_master : entity work.i2c_master(logic)

@@ -27,7 +27,10 @@ Port (
 	-- motor phase currents
 	u_current_out	: out	std_logic_vector(9 downto 0);
 	v_current_out	: out	std_logic_vector(9 downto 0);
-	w_current_out	: out	std_logic_vector(9 downto 0)
+	w_current_out	: out	std_logic_vector(9 downto 0);
+	
+	-- trigger reading
+	trigger_in		: in	std_logic
 
 	);
 end entity MAX1139;
@@ -46,7 +49,8 @@ architecture rtl of MAX1139 is
 							state_config,
 							s_hold2,
 							state_read,
-							state_latch);
+							s_hold3,
+							state_done);
 	signal state, next_state: state_type := state_reset; -- legal?
 
 	signal i2c_busy_last	: std_logic;
@@ -70,12 +74,46 @@ architecture rtl of MAX1139 is
 	end if;
 	end process state_machine_ctrl;
 
+	-- State machine reading control block - need to read multiple registers
+	state_machine_read_ctrl: process (rst_n_in, clk_in, i2c_busy_in, i2c_busy_last, state) begin
+	if (rising_edge(clk_in)) then
+		if (state = state_reset) then
+			adc_reg <= (Others => '0');
+			u_current <= (Others => '0');
+			v_current <= (Others => '0');
+			w_current <= (Others => '0');
+		elsif (state = s_hold3) then
+			i2c_busy_last <= i2c_busy_in; -- pulled from eewiki's spi to i2c code
+			if (i2c_busy_last = '1' and i2c_busy_in = '0') then	-- Hot&Fresh Data
+				adc_reg <= adc_reg + '1';
+				if (adc_reg = "0000") then
+					u_current(9 downto 8) <= rx_data_in(1 downto 0);
+				elsif (adc_reg = "0001") then
+					u_current(7 downto 0) <= rx_data_in;
+				elsif (adc_reg = "0010") then
+					v_current(9 downto 8) <= rx_data_in(1 downto 0);
+				elsif (adc_reg = "0011") then
+					v_current(7 downto 0) <= rx_data_in;
+				elsif (adc_reg = "0100") then
+					w_current(9 downto 8) <= rx_data_in(1 downto 0);
+				elsif (adc_reg = "0101") then
+					w_current(7 downto 0) <= rx_data_in;
+				end if;
+			end if;
+		elsif (state = state_done) then
+			u_current_out <= u_current;
+			v_current_out <= v_current;
+			w_current_out <= w_current;
+		end if;
+	end if;
+	end process state_machine_read_ctrl;
+	
 	-- State machine
-	state_machine: process (state, i2c_busy_in, adc_reg) begin
+	state_machine: process (state, i2c_busy_in, adc_reg, trigger_in) begin
 	case state is
 		-- In a reset state -- reassert configuration registers.
 		when state_reset =>
-			if( i2c_busy_in = '0') then		-- If the I2C lines are free
+			if ( i2c_busy_in = '0' and trigger_in = '1') then		-- If the I2C lines are free
 				next_state <= state_setup;
 			else
 				next_state <= state_reset;
@@ -85,29 +123,25 @@ architecture rtl of MAX1139 is
 			tx_data_out <= (Others => '0');
 			data_rdy_out <= '0';
 			rw_out <= '0';					-- Writing
-			adc_reg	<= (Others => '0');
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
-		 
+			
 		when state_setup =>
-			next_state <= s_hold1;
+			if (i2c_busy_in = '0') then
+				next_state <= state_setup;
+			else
+				next_state <= s_hold1;
+			end if;
 
 			-- OUTPUTS --
 			-- REG SEL2 SEL1 SEL0 CLK BIP/UNI RST X
 			-- REG = 1 - Setup Register
-			-- SEL[2:0] = 0 - VDD as Reference Voltage (3.3)
+			-- SEL[2:0] = (5 - Internal Reference Voltage (2.046))
 			-- CLK = 0 - Internal Clock
 			-- BIP/UNI = 0 - Unipolar Inputs
 			-- RST = 1 - Don't Reboot!
 			-- X = 0 - Don't Care Bit
-			tx_data_out <=  "10000010";
+			tx_data_out <=  "11010010";
 			data_rdy_out <= '1';
 			rw_out <= '0';					-- Writing
-			adc_reg	<= (Others => '0');
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
 					
 		when s_hold1 =>
 			if (i2c_busy_in = '1') then
@@ -120,13 +154,13 @@ architecture rtl of MAX1139 is
 			tx_data_out <=  "10000010";
 			data_rdy_out <= '0';
 			rw_out <= '0';					-- Writing
-			adc_reg	<= (Others => '0');
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
 		
 		when state_config =>
-			next_state <= s_hold2;
+			if (i2c_busy_in = '0') then
+				next_state <= state_config;
+			else
+				next_state <= s_hold2;
+			end if;
 			
 			-- OUTPUTS --
 			-- REG SCAN1 SCAN0 CS3 CS2 CS1 CS0 SGL/DIF
@@ -137,10 +171,6 @@ architecture rtl of MAX1139 is
 			tx_data_out <=  "00000101";
 			data_rdy_out <= '1';
 			rw_out <= '0';					-- Writing
-			adc_reg	<= (Others => '0');
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
 			
 		when s_hold2 =>
 			if (i2c_busy_in = '1') then
@@ -150,51 +180,48 @@ architecture rtl of MAX1139 is
 			end if;
 
 			-- OUTPUTS --
-			tx_data_out <=  "00000101";
+			tx_data_out <= (Others => '0');
 			data_rdy_out <= '0';
 			rw_out <= '0';					-- Writing
-			adc_reg	<= (Others => '0');
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
-
+			
+		
 		when state_read =>
-			-- ***** pulled from eewiki's spi to i2c code
-			i2c_busy_last <= i2c_busy_in;
-			if(i2c_busy_last = '0' and i2c_busy_in = '1') then	-- Hot&Fresh Data
-				adc_reg <= adc_reg + '1';
-			end if;
-			-- ***** 
-
-			if (adc_reg < "0110") then	-- Check for all phase data
+			if (i2c_busy_in = '0') then
 				next_state <= state_read;
 			else
-				next_state <= state_latch;
+				next_state <= s_hold3;
+			end if;
+			
+			-- OUTPUTS --
+			tx_data_out <= (Others => '0');
+			data_rdy_out <= '1';
+			rw_out <= '1';					-- Writing
+			
+		when s_hold3 =>
+			if (i2c_busy_in = '1') then
+				next_state <= s_hold3;
+			elsif (adc_reg < "0101") then
+				next_state <= state_read;
+			else
+				next_state <= state_done;
 			end if;
 
 			-- OUTPUTS --
 			tx_data_out <= (Others => '0');
 			data_rdy_out <= '1';
-			rw_out <= '1';					-- Reading
-			u_current <= u_current;
-			v_current <= v_current;
-			w_current <= w_current;
-
-		when state_latch =>
-			next_state <= state_reset;
-
-			-- OUTPUTS --
-			tx_data_out <= (Others => '0');
-			data_rdy_out <= '0';			-- Keep an eye on the =
-			rw_out <= '0';					-- Reading
-			adc_reg <= (Others => '0');
-			if (adc_reg ="0001") then
-				u_current <= rx_data_in & "00";
-			elsif (adc_reg = "0011") then
-				v_current <= rx_data_in & "00";
-			elsif (adc_reg = "0101") then
-				w_current <= rx_data_in & "00";
+			rw_out <= '1';					-- Writing
+			
+		when state_done =>
+			if(trigger_in = '0') then		-- If the I2C lines are free
+				next_state <= state_reset;
+			else
+				next_state <= state_done;
 			end if;
+
+			-- OUTPUTS --			
+			tx_data_out <= (Others => '0');
+			data_rdy_out <= '0';
+			rw_out <= '0';					-- Writing
 
 		end case;
 	end process state_machine;
@@ -203,9 +230,7 @@ architecture rtl of MAX1139 is
 	--=======================================================================
 	--  Stateless Signals
 	--=======================================================================
-	u_current_out <= u_current;
-	v_current_out <= v_current;
-	w_current_out <= w_current;
+
 	-------------------------------------------------------------------------
 	
 	end architecture rtl;
